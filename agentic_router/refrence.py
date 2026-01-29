@@ -508,3 +508,24 @@ if __name__ == '__main__':
         print("="*50 + "\n")
     else:
         print("No test samples found to benchmark.")
+
+
+ANALYZE_SINGLE_RESP_PROMPT = """Your role as an assistant involves thoroughly analysing the response of an LLM and provide a profiling description of the LLM. Specifically, you will be provided with a query, difficulty analysis of the query, model response to the query, and the correctness of the response. Your profiling analysis can systematically evaluate the LLM capability including but not limited to several key dimensions: reasoning, comprehension, instruction following, agentic, knowledge retrieval, coding, multilingual. For each dimension, elaborate your model response analysis on the specific challenges, strength, and weakness into your explanation. Now, try to construct the concise capability profile for the LLM through the above guidelines with 200 words with NO MARKDOWN FORMAT:"""
+
+results = []
+
+response = client.chat.completions.create(
+    model="Qwen/Qwen2.5-32B-Instruct",
+    # reasoning_effort="high",
+    temperature=0.5,
+    top_p=0.95,
+    max_tokens=400,
+    messages=[
+        {
+            "role": "user",
+            "content": ANALYZE_SINGLE_RESP_PROMPT + f"\n\nQuery: {query}\n\nDifficulty Analysis: {difficulty_analysis}\n\nModel Response: {model_response}\n\nCorrectness: {correctness}"
+        }
+    ]
+)
+
+results.append(response.choices[0].message.content)
