@@ -197,7 +197,7 @@ async def generate_analysis(
     semaphore = asyncio.Semaphore(max_concurrency)
     lock = asyncio.Lock()  # Lock for thread-safe db operations
 
-    async def process_entry(entry: dict[str, Any], embedding: list[float]) -> None:
+    async def process_entry(entry: dict[str, Any]) -> None:
         nonlocal failed_count, processed_count
 
         prompt = entry.get("prompt", "")
@@ -217,8 +217,11 @@ async def generate_analysis(
             correctness = "incorrect"
 
         analysis = None
+        embedding = None
         async with semaphore:
             try:
+                # Embed the prompt
+                embedding = await embedding_model.embed(prompt)
                 # Generate difficulty analysis
                 result = await evaluator.evaluate(
                     question=prompt,
@@ -248,7 +251,8 @@ async def generate_analysis(
         )
 
         async with lock:
-            db.add_entry(analysis_entry, embedding)
+            if embedding is not None:
+                db.add_entry(analysis_entry, embedding)
             processed_count += 1
 
             # Periodic save to prevent data loss
@@ -265,18 +269,8 @@ async def generate_analysis(
                 Path(output_path).parent.mkdir(parents=True, exist_ok=True)
                 db.save(output_path)
 
-    # Prepare all tasks with embeddings
-    all_tasks = []
-    for i in range(0, len(entries), batch_size):
-        batch = entries[i : i + batch_size]
-
-        # Batch embed all prompts
-        prompts = [entry.get("prompt", "") for entry in batch]
-        embeddings = await embedding_model.embed_batch(prompts)
-
-        # Create tasks for all entries in the batch
-        for entry, embedding in zip(batch, embeddings):
-            all_tasks.append(process_entry(entry, embedding))
+    # Prepare all tasks (each task embeds and evaluates)
+    all_tasks = [process_entry(entry) for entry in entries]
 
     # Run all tasks concurrently with tqdm_async progress bar
     await tqdm_async.gather(*all_tasks, desc="Processing entries", disable=debug)
